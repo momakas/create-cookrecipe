@@ -1,5 +1,7 @@
+import { useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, StyleSheet } from "react-native";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useDinnerHistory } from "../../hooks/useDinnerHistory";
 import { DinnerHistoryItem } from "../../components/dinner/DinnerHistoryItem";
@@ -9,6 +11,12 @@ import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from "../../constants/theme
 
 export default function HistoryScreen() {
   const { dinners, isLoading, error, refresh } = useDinnerHistory();
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   if (isLoading) return <LoadingSpinner />;
 

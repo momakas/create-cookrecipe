@@ -1,12 +1,6 @@
-import { useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, ScrollView, Alert, ActivityIndicator, StyleSheet } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRecipeSuggestion } from "../../hooks/useRecipeSuggestion";
 import { useFridgeIngredients } from "../../hooks/useFridgeIngredients";
@@ -14,13 +8,18 @@ import { RecipeCard } from "../../components/recipe/RecipeCard";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { Input } from "../../components/ui/Input";
 import { CATEGORY_ICONS } from "../../constants/categories";
 import { COLORS, SPACING, FONT_SIZE } from "../../constants/theme";
+import { RecipeSuggestion } from "../../types/recipe";
+
+const SUGGESTION_COUNTS = [1, 3, 5] as const;
 
 export default function SuggestScreen() {
-  const { ingredients, isLoading: ingredientsLoading } = useFridgeIngredients();
+  const { ingredients, isLoading: ingredientsLoading, refresh } =
+    useFridgeIngredients();
   const {
-    suggestion,
+    suggestions,
     isGenerating,
     error,
     generateSuggestion,
@@ -28,11 +27,45 @@ export default function SuggestScreen() {
     clearSuggestion,
   } = useRecipeSuggestion();
   const [isSaving, setIsSaving] = useState(false);
+  const [requestText, setRequestText] = useState("");
+  const [suggestionCount, setSuggestionCount] = useState<number>(5);
+  const previousIngredientKeyRef = useRef<string>("");
 
-  const handleSaveToHistory = async () => {
+  const ingredientKey = useMemo(
+    () =>
+      [...ingredients]
+        .map((i) => `${i.id}:${i.name}:${i.quantity ?? ""}:${i.category}:${i.expiry_date ?? ""}`)
+        .sort()
+        .join("|"),
+    [ingredients]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  useEffect(() => {
+    if (!previousIngredientKeyRef.current) {
+      previousIngredientKeyRef.current = ingredientKey;
+      return;
+    }
+
+    if (previousIngredientKeyRef.current !== ingredientKey) {
+      clearSuggestion();
+      previousIngredientKeyRef.current = ingredientKey;
+    }
+  }, [ingredientKey, clearSuggestion]);
+
+  const handleGenerate = async () => {
+    await generateSuggestion(requestText.trim(), suggestionCount);
+  };
+
+  const handleSaveToHistory = async (recipe: RecipeSuggestion) => {
     try {
       setIsSaving(true);
-      await saveToHistory();
+      await saveToHistory(recipe);
       Alert.alert("保存しました", "晩御飯の履歴に保存しました。");
     } catch (err) {
       Alert.alert(
@@ -64,6 +97,31 @@ export default function SuggestScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Card style={styles.requestCard}>
+        <Input
+          label="AIへの追加リクエスト（任意）"
+          value={requestText}
+          onChangeText={setRequestText}
+          placeholder="例: 20分以内、辛くない、和食、子ども向け など"
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+          style={styles.requestInput}
+        />
+        <Text style={styles.countLabel}>提案数</Text>
+        <View style={styles.countButtons}>
+          {SUGGESTION_COUNTS.map((count) => (
+            <Button
+              key={count}
+              title={`${count}件`}
+              variant={count === suggestionCount ? "primary" : "secondary"}
+              onPress={() => setSuggestionCount(count)}
+              style={styles.countButton}
+            />
+          ))}
+        </View>
+      </Card>
+
       <Card style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>冷蔵庫の材料</Text>
         <View style={styles.ingredientChips}>
@@ -84,24 +142,29 @@ export default function SuggestScreen() {
       {isGenerating ? (
         <View style={styles.generatingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.generatingText}>
-            レシピを考えています...
-          </Text>
+          <Text style={styles.generatingText}>レシピを考えています...</Text>
         </View>
-      ) : suggestion ? (
+      ) : suggestions.length > 0 ? (
         <View>
-          <RecipeCard recipe={suggestion} />
+          {suggestions.map((recipe, index) => (
+            <View key={`${recipe.dish_name}-${index}`}>
+              <Text style={styles.recipeIndex}>提案 {index + 1}</Text>
+              <RecipeCard recipe={recipe} />
+              <View style={styles.actionButtons}>
+                <Button
+                  title="この献立を履歴に保存"
+                  onPress={() => handleSaveToHistory(recipe)}
+                  loading={isSaving}
+                />
+              </View>
+            </View>
+          ))}
 
           <View style={styles.actionButtons}>
             <Button
-              title="この献立を履歴に保存"
-              onPress={handleSaveToHistory}
-              loading={isSaving}
-            />
-            <Button
               title="もう一度提案してもらう"
               variant="ghost"
-              onPress={generateSuggestion}
+              onPress={handleGenerate}
             />
           </View>
         </View>
@@ -120,11 +183,11 @@ export default function SuggestScreen() {
 
           <Button
             title="AIにレシピを提案してもらう"
-            onPress={generateSuggestion}
+            onPress={handleGenerate}
             style={styles.suggestButton}
           />
           <Text style={styles.hintText}>
-            冷蔵庫の材料と最近の献立をもとに{"\n"}
+            冷蔵庫の材料を一部使って、最近の献立も考慮しつつ{"\n"}
             AIが今日の晩御飯を提案します
           </Text>
         </View>
@@ -149,6 +212,25 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     marginBottom: SPACING.md,
+  },
+  requestCard: {
+    marginBottom: SPACING.md,
+  },
+  requestInput: {
+    minHeight: 90,
+  },
+  countLabel: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "600",
+    color: COLORS.text,
+    marginBottom: SPACING.xs,
+  },
+  countButtons: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+  },
+  countButton: {
+    flex: 1,
   },
   summaryTitle: {
     fontSize: FONT_SIZE.md,
@@ -222,5 +304,12 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  recipeIndex: {
+    fontSize: FONT_SIZE.sm,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
   },
 });

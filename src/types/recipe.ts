@@ -13,3 +13,7 @@ export interface RecipeSuggestion {
   readonly steps: readonly string[];
   readonly tips: string;
 }
+
+export interface RecipeSuggestionResponse {
+  readonly recipes: readonly RecipeSuggestion[];
+}

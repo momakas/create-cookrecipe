@@ -1,5 +1,7 @@
+import { useCallback } from "react";
 import { View, Text, SectionList, TouchableOpacity, StyleSheet } from "react-native";
 import { router } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFridgeIngredients } from "../../hooks/useFridgeIngredients";
 import { IngredientItem } from "../../components/fridge/IngredientItem";
@@ -11,6 +13,12 @@ import { IngredientCategory } from "../../types/database";
 
 export default function FridgeScreen() {
   const { grouped, isLoading, error, refresh } = useFridgeIngredients();
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
 
   if (isLoading) return <LoadingSpinner />;
 
