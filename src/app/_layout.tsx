@@ -20,7 +20,7 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="history/[id]"
-          options={{ title: "履歴の詳細" }}
+          options={{ title: "履歴の詳細", headerBackTitle: "履歴一覧" }}
         />
         <Stack.Screen
           name="fridge/add"
